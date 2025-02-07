@@ -42,27 +42,20 @@ public class PageLoader {
 
                     if (statusCode.is3xxRedirection()) {
                         String location = clientResponse.headers().asHttpHeaders().getFirst(HttpHeaders.LOCATION);
-                        log.debug("Получен заголовок Location: {}", location);
+
                         if (location != null) {
                             log.info("Redirect to: {}", location);
                             return loadPage(location, redirectCount + 1);
                         } else {
                             return Mono.error(new RedirectException("Redirect without Location header", null));
                         }
+
                     } else if (statusCode.is4xxClientError()) {
-                        return clientResponse.bodyToMono(String.class)
-                                .flatMap(body -> {
-                                    log.error("Client error [{}] while requesting [{}]",
-                                            statusCode.value(), url);
-                                    return Mono.error(new ClientErrorException("Client error: " + statusCode.value()));
-                                });
+                        return Mono.error(new ClientErrorException("Client error: " + statusCode.value()));
+
                     } else if (statusCode.is5xxServerError()) {
-                        return clientResponse.bodyToMono(String.class)
-                                .flatMap(body -> {
-                                    log.error("Server error [{}] while requesting [{}]",
-                                            statusCode.value(), url);
-                                    return Mono.error(new ServerErrorException("Server error: " + statusCode.value()));
-                                });
+                        return Mono.error(new ServerErrorException("Server error: " + statusCode.value()));
+
                     } else {
                         return clientResponse.toEntity(String.class)
                                 .map(resp -> new PageContent(
@@ -83,12 +76,20 @@ public class PageLoader {
     }
 
     public Mono<PageContent> loadPageWithDelay(String url, long delayMillis) {
-        if (robotsHandler.isAllowed(url)) {
-            return Mono.delay(Duration.ofMillis(delayMillis))
-                    .then(loadPage(url, 0));
-        } else {
-            log.error("Access to url: {} denied based on the rules of the robot.txt file", url);
-            return Mono.empty();
-        }
+        return robotsHandler.isAllowed(url)
+                .flatMap(isAllowed -> {
+                    if (isAllowed) {
+                        return Mono.delay(Duration.ofMillis(delayMillis))
+                                .then(loadPage(url, 0));
+                    } else {
+                        log.error("Access to url: {} denied based on the rules of the robot.txt file", url);
+                        return Mono.empty();
+                    }
+                })
+                .onErrorResume(e -> {
+                    log.warn("Error checking robots.txt for url: {}. Proceeding with crawling.", url, e);
+                    return Mono.delay(Duration.ofMillis(delayMillis))
+                            .then(loadPage(url, 0));
+                });
     }
 }

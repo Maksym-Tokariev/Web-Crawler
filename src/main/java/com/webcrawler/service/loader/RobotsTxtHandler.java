@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.net.URL;
 import java.util.HashMap;
@@ -23,7 +24,7 @@ public class RobotsTxtHandler {
     private Map<String, SimpleRobotRules> robotsCache = new HashMap<>();
     private final String userAgent = "MyWebCrawler";
 
-    public boolean isAllowed(String url) {
+    public Mono<Boolean> isAllowed(String url) {
         try {
           URL urlObj = new URL(url);
           String host = urlObj.getHost();
@@ -31,22 +32,25 @@ public class RobotsTxtHandler {
 
             SimpleRobotRules rules = robotsCache.get(host);
             if (rules == null) {
-                byte[] content = WebClient.create()
+                return WebClient.create()
                         .get()
                         .uri(robotsProtocol)
                         .retrieve()
                         .bodyToMono(byte[].class)
-                        .block();
-
-                SimpleRobotRulesParser parser = new SimpleRobotRulesParser();
-                rules = parser.parseContent(robotsProtocol, content, "text/plain", userAgent);
-
-                robotsCache.put(host, rules);
+                        .map(content -> {
+                            SimpleRobotRulesParser parser = new SimpleRobotRulesParser();
+                            SimpleRobotRules newRules = parser.parseContent(robotsProtocol, content,
+                                    "text/plain", userAgent);
+                            robotsCache.put(host, newRules);
+                            return newRules.isAllowed(url);
+                        })
+                        .onErrorReturn(true);
+            } else {
+                return Mono.just(rules.isAllowed(url));
             }
-            return rules.isAllowed(url);
         } catch (Exception e) {
             log.error("Error while checking robots.txt: {}", e.getMessage(), e);
-            return true;
+            return Mono.just(true);
         }
     }
 }

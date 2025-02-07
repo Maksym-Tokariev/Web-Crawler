@@ -1,68 +1,76 @@
 package com.webcrawler.service;
 
-import com.webcrawler.model.PageContent;
-import com.webcrawler.service.extractor.UrlExtractor;
 import com.webcrawler.service.loader.PageLoader;
 import com.webcrawler.service.parser.HtmlParser;
 import com.webcrawler.service.queue.UrlQueueService;
-import lombok.AllArgsConstructor;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.nodes.Document;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.util.Optional;
-
 @Slf4j
 @Service
-@Data
 public class CrawlerService {
 
     private final PageLoader pageLoader;
-    private final UrlExtractor extractor;
     private final HtmlParser parser;
-    private final UrlQueueService urlQueueService;
+    private UrlQueueService urlQueueService;
+    private final Deduplicator deduplicator;
+    private static final int MAX_PARSE_COUNT = 100;
+    private int parseCount = 0;
+
+    public CrawlerService(PageLoader pageLoader, HtmlParser parser, Deduplicator deduplicator) {
+        this.deduplicator = deduplicator;
+        this.pageLoader = pageLoader;
+        this.parser = parser;
+    }
+
+    @Autowired
+    public void setUrlQueueService(UrlQueueService urlQueueService) {
+        this.urlQueueService = urlQueueService;
+        this.urlQueueService.setCrawlerService(this);
+    }
 
     public void startCrawling(String url) {
-//        while (true) {
-            log.info("Crawling url: {}", url);
-            Mono<PageContent> contentMono = pageLoader.loadPageWithDelay(url, 5000);
-            PageContent pageContent = contentMono.block();
 
-            if (pageContent != null) {
-                String urlItem = pageContent.getUrl();
-                try {
-                    Document document = parser.parse(pageContent.getHtmlContent(), urlItem);
-                    extractor.extract(document);
-                } catch (Exception e) {
-                    log.error("Error while crawling url: {}", urlItem, e);
-                }
-//            }
-
-//            log.info("Crawling url: {}", url);
-//            Optional<UrlQueueService> optionalItem = urlQueueService.getNextUrl();
-//
-//            if (optionalItem.isPresent()) {
-//                UrlQueueService item = optionalItem.get();
-//                String urlItem = item.getUrl();
-//
-//                try {
-//                    Mono<PageContent> pageContentMono = pageLoader.loadPageWithDelay(urlItem, 5000);
-//                    PageContent pageContent = pageContentMono.block();
-//
-//                    if (pageContent != null) {
-//                        Document document = parser.parse(pageContent.getHtmlContent(), urlItem);
-//
-//                        extractor.extract(document);
-//                    }
-//                } catch (Exception e) {
-//                    log.error("Error while crawling url: {}", urlItem, e);
-//                }
-//            } else {
-//                log.info("The queue is empty. Stop crawling process.");
-//                break;
-//            }
+        if (wasVisited(url)) {
+            log.debug("An url: {} has already been visited is skipped.", url);
+        } else {
+            System.out.println("<----- [Parse count: " + parseCount + "] ------>");
+            crawlUrl(url);
+            parseCount++;
         }
+
+
+    }
+
+    public void crawlUrl(String url) {
+        if (url != null && parseCount < MAX_PARSE_COUNT) {
+            log.info("Crawling url: {}", url);
+            pageLoader.loadPageWithDelay(url, 5000)
+                    .flatMap(pageContent -> {
+                        String urlItem = pageContent.getUrl();
+                        try {
+                            parser.parse(pageContent.getHtmlContent(), urlItem);
+
+                        } catch (Exception e) {
+                            log.error("Error while crawling url: {}", urlItem, e);
+                        }
+                        return Mono.empty();
+                    })
+                    .doOnError(e -> log.error("Error while crawling url: {}", url, e))
+                    .subscribe();
+        } else {
+            log.info("Crawling was stopped because the number of parses has maxed out (100): {}", parseCount);
+        }
+    }
+
+    public void startCrawling() {
+        String startUrl = urlQueueService.pushUrl();
+        startCrawling(startUrl);
+    }
+
+    public boolean wasVisited(String url) {
+        return deduplicator.wasVisited(url);
     }
 }

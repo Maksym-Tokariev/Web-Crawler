@@ -2,7 +2,7 @@ package com.webcrawler.utils.graph;
 
 
 public class Queue {
-    private final int SIZE = 20;
+    private final int SIZE = 30;
     private int front;
     private int rear;
     private int[] queueArray;

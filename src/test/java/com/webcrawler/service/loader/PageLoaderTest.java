@@ -6,6 +6,7 @@ import com.webcrawler.model.PageContent;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -31,8 +32,8 @@ public class PageLoaderTest {
         WebClient webClient = WebClient.create();
         RobotsTxtHandler robotsHandler = new RobotsTxtHandler() {
             @Override
-            public boolean isAllowed(String url) {
-                return true;
+            public Mono<Boolean> isAllowed(String url) {
+                return Mono.just(true);
             }
         };
 
@@ -75,8 +76,8 @@ public class PageLoaderTest {
         WebClient webClient = WebClient.create();
         RobotsTxtHandler robotsHandler = new RobotsTxtHandler() {
             @Override
-            public boolean isAllowed(String url) {
-                return true;
+            public Mono<Boolean> isAllowed(String url) {
+                return Mono.just(true);
             }
         };
 
@@ -111,8 +112,8 @@ public class PageLoaderTest {
         WebClient webClient = WebClient.create();
         RobotsTxtHandler robotsHandler = new RobotsTxtHandler() {
             @Override
-            public boolean isAllowed(String url) {
-                return true;
+            public Mono<Boolean> isAllowed(String url) {
+                return Mono.just(true);
             }
         };
 
