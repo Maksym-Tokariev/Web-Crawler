@@ -8,6 +8,10 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 
+/**
+ * HTML Parser
+ * */
+
 @Slf4j
 @Service
 @Data
@@ -18,13 +22,12 @@ public class HtmlParser {
 
     /**
      * Parse HTML content and return Document object.
-     */
+     * */
     public void parse(String htmlContent, String url) {
         log.info("Parsing for URL: {}", url);
         Document document = Jsoup.parse(htmlContent, url);
 
         deduplicator.addUrl(url);
         urlExtractor.extract(document);
-
     }
 }

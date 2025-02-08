@@ -4,73 +4,55 @@ import com.webcrawler.service.loader.PageLoader;
 import com.webcrawler.service.parser.HtmlParser;
 import com.webcrawler.service.queue.UrlQueueService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
 public class CrawlerService {
 
-    private final PageLoader pageLoader;
-    private final HtmlParser parser;
-    private UrlQueueService urlQueueService;
-    private final Deduplicator deduplicator;
-    private static final int MAX_PARSE_COUNT = 100;
-    private int parseCount = 0;
+    @Value("${service.max.concurrency}")
+    private int MAX_CONCURRENCY;
 
-    public CrawlerService(PageLoader pageLoader, HtmlParser parser, Deduplicator deduplicator) {
-        this.deduplicator = deduplicator;
+    @Value("${service.max.parse.count}")
+    private int MAX_PARSE_COUNT;
+
+    private final PageLoader pageLoader;
+
+    private final HtmlParser parser;
+
+    private final UrlQueueService urlQueueService;
+
+    private final AtomicInteger parseCount = new AtomicInteger(0);
+
+    public CrawlerService(PageLoader pageLoader, HtmlParser parser, UrlQueueService urlQueueService) {
         this.pageLoader = pageLoader;
         this.parser = parser;
-    }
-
-    @Autowired
-    public void setUrlQueueService(UrlQueueService urlQueueService) {
         this.urlQueueService = urlQueueService;
-        this.urlQueueService.setCrawlerService(this);
-    }
-
-    public void startCrawling(String url) {
-
-        if (wasVisited(url)) {
-            log.debug("An url: {} has already been visited is skipped.", url);
-        } else {
-            System.out.println("<----- [Parse count: " + parseCount + "] ------>");
-            crawlUrl(url);
-            parseCount++;
-        }
-
-
-    }
-
-    public void crawlUrl(String url) {
-        if (url != null && parseCount < MAX_PARSE_COUNT) {
-            log.info("Crawling url: {}", url);
-            pageLoader.loadPageWithDelay(url, 5000)
-                    .flatMap(pageContent -> {
-                        String urlItem = pageContent.getUrl();
-                        try {
-                            parser.parse(pageContent.getHtmlContent(), urlItem);
-
-                        } catch (Exception e) {
-                            log.error("Error while crawling url: {}", urlItem, e);
-                        }
-                        return Mono.empty();
-                    })
-                    .doOnError(e -> log.error("Error while crawling url: {}", url, e))
-                    .subscribe();
-        } else {
-            log.info("Crawling was stopped because the number of parses has maxed out (100): {}", parseCount);
-        }
     }
 
     public void startCrawling() {
-        String startUrl = urlQueueService.pushUrl();
-        startCrawling(startUrl);
+        Flux.range(1, MAX_PARSE_COUNT)
+                .flatMap(i -> {
+                    String url = urlQueueService.takeUrl();
+                    return crawlUrl(url);
+                }, MAX_CONCURRENCY)
+                .doOnComplete(() -> log.debug("Crawling completed with {} URLs.", parseCount.get()))
+                .subscribe();
     }
 
-    public boolean wasVisited(String url) {
-        return deduplicator.wasVisited(url);
+    private Mono<Void> crawlUrl(String url) {
+        log.debug("Start crawling URL {}", url);
+        return pageLoader.loadPageWithDelay(url, 5000)
+                .flatMap(pageContent -> {
+                    parser.parse(pageContent.getHtmlContent(), url);
+                    parseCount.incrementAndGet();
+                    return Mono.empty();
+                })
+                .doOnError(e -> log.error("Error while crawling URL: {}", url, e)).then();
     }
 }

@@ -1,5 +1,6 @@
 package com.webcrawler.service.extractor;
 
+import com.webcrawler.service.Deduplicator;
 import com.webcrawler.service.queue.UrlQueueService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -19,21 +20,29 @@ import java.util.List;
 public class UrlExtractor {
 
     private final UrlQueueService urlQueueService;
+    private final Deduplicator deduplicator;
 
     public void extract(Document document) {
-        log.info("Extracting urls from document");
-
         try {
+            log.info("Extracting urls from document: {}", document.title());
+
             Elements links = document.select("a[href]");
 
             List<String> extractedUrls = links.stream().map(link ->
                             link.attr("abs:href"))
                     .filter(this::isValidUrl)
+                    .filter(url -> {
+                        if (!deduplicator.isNewUrl(url)) {
+                            log.info("Skipping the duplicate url: {}", url);
+                            return false;
+                        }
+                        return true;
+                    })
                     .toList();
 
             extractedUrls.stream().iterator().forEachRemaining(System.out::println);
 
-            urlQueueService.processQueue(extractedUrls);
+            urlQueueService.addUrls(extractedUrls);
 
             log.debug("Extracted url: [{}]", extractedUrls.size());
         } catch (Exception e) {

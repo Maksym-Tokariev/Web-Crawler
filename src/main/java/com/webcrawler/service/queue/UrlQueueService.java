@@ -1,13 +1,14 @@
 package com.webcrawler.service.queue;
 
-import com.webcrawler.service.CrawlerService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * The queue to store a links.
@@ -18,51 +19,42 @@ import java.util.Queue;
 @Data
 public class UrlQueueService {
 
-    private final Queue<String> queue = new LinkedList<>();
-    private CrawlerService crawlerService;
-    private static final int QUEUE_SIZE = 10;
+    private int QUEUE_SIZE;
+    private final BlockingQueue<String> queue;
 
-    public boolean isOvercrowded() {
-        return queue.size() > QUEUE_SIZE;
+    public UrlQueueService(@Value("${service.queue.size}") int queueSize) {
+        this.QUEUE_SIZE = queueSize;
+        this.queue = new LinkedBlockingQueue<>(QUEUE_SIZE);
     }
 
     public void addUrls(List<String> links) {
-        if (links.size() <= QUEUE_SIZE) {
-            queue.addAll(links);
-        } else {
-            log.info("List of links contain more than " + QUEUE_SIZE + " elements. " +
-                    "Only the first ten links out of " + links.size() + " will be processed");
-            for (int i = 0; i < QUEUE_SIZE; i++) {
-                queue.add(links.get(i));
+        for (String link : links) {
+            try {
+                queue.put(link);
+                System.out.println("Queue content: "+ Arrays.toString(queue.toArray()));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Interrupted while adding URL: {}", link, e);
             }
         }
     }
 
     public void addUrl(String link) {
-        queue.add(link);
-    }
-
-    public String pushUrl() {
-        return queue.poll();
-    }
-
-    /**
-    *  This method calls CrawlerService to handle links from the queue. If the queue is full, method stops it's work.
-    **/
-    public void processQueue(List<String> links) {
-        addUrls(links);
-        while (!queue.isEmpty()) {
-            System.out.println("Queue: " + queue.stream().toList());
-            String link = queue.poll();
-            crawlerService.startCrawling(link);
-            if (isOvercrowded()) {
-                break;
-            }
+        try {
+            queue.put(link);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while adding URL: {}", link, e);
         }
     }
 
-    public boolean isQueueEmpty() {
-        return queue.isEmpty();
+    public String takeUrl() {
+        try {
+            return queue.take();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while taking URL", e);
+            return null;
+        }
     }
-
 }

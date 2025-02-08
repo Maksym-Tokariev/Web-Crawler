@@ -4,8 +4,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 /**
@@ -14,17 +13,16 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@Data
 public class Deduplicator {
 
-    private final Set<String> urls = new HashSet<>();
+    private final ConcurrentHashMap<String, Boolean> urls = new ConcurrentHashMap<>();
 
     public void addUrl(String url) {
-        urls.add(url);
+        urls.put(url, true);
+        log.debug("Added to deduplicator URL: {}", url);
     }
 
-    public boolean wasVisited(String url) {
-        log.info("!----List oo duplicates: {}", urls.stream().toList());
-        return urls.contains(url);
+    public boolean isNewUrl(String url) {
+        return urls.putIfAbsent(url, Boolean.TRUE) == null;
     }
 }

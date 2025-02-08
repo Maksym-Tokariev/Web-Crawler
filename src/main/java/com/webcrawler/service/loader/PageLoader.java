@@ -4,8 +4,9 @@ import com.webcrawler.exceptions.ClientErrorException;
 import com.webcrawler.exceptions.RedirectException;
 import com.webcrawler.exceptions.ServerErrorException;
 import com.webcrawler.model.PageContent;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
@@ -23,10 +24,11 @@ import java.time.Duration;
 
 @Slf4j
 @Component
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class PageLoader {
 
-    private static final int MAX_REDIRECTS = 5;
+    @Value("${loader.max.redirects}")
+    private int MAX_REDIRECTS;
     private final WebClient webClient;
     private final RobotsTxtHandler robotsHandler;
 
@@ -44,7 +46,7 @@ public class PageLoader {
                         String location = clientResponse.headers().asHttpHeaders().getFirst(HttpHeaders.LOCATION);
 
                         if (location != null) {
-                            log.info("Redirect to: {}", location);
+                            log.debug("Redirect to: {}", location);
                             return loadPage(location, redirectCount + 1);
                         } else {
                             return Mono.error(new RedirectException("Redirect without Location header", null));
