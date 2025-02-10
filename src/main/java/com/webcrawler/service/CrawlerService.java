@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
@@ -38,8 +39,11 @@ public class CrawlerService {
     public void startCrawling() {
         Flux.range(1, MAX_PARSE_COUNT)
                 .flatMap(i -> {
-                    String url = urlQueueService.takeUrl();
-                    return crawlUrl(url);
+                    if (!urlQueueService.isEmpty()) {
+                        String url = urlQueueService.takeUrl();
+                        return crawlUrl(url);
+                    }
+                    return Flux.empty();
                 }, MAX_CONCURRENCY)
                 .doOnComplete(() -> log.debug("Crawling completed with {} URLs.", parseCount.get()))
                 .subscribe();
@@ -48,11 +52,15 @@ public class CrawlerService {
     private Mono<Void> crawlUrl(String url) {
         log.debug("Start crawling URL {}", url);
         return pageLoader.loadPageWithDelay(url, 5000)
+                .filter(Objects::nonNull)
                 .flatMap(pageContent -> {
                     parser.parse(pageContent.getHtmlContent(), url);
                     parseCount.incrementAndGet();
                     return Mono.empty();
                 })
-                .doOnError(e -> log.error("Error while crawling URL: {}", url, e)).then();
+                .onErrorResume(e -> {
+                   log.error("Error while crawling URL {}", url, e);
+                   return Mono.empty();
+                }).then();
     }
 }

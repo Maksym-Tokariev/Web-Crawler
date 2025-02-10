@@ -57,4 +57,8 @@ public class UrlQueueService {
             return null;
         }
     }
+
+    public boolean isEmpty() {
+        return queue.isEmpty();
+    }
 }

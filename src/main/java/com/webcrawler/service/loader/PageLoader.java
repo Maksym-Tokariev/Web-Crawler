@@ -73,7 +73,7 @@ public class PageLoader {
                 )
                 .onErrorResume(e -> {
                     log.error("Error loading page with url: {}, message: {}", url, e.getMessage());
-                    return Mono.error(e);
+                    return Mono.empty();
                 });
     }
 

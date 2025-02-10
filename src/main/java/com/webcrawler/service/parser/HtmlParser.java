@@ -1,6 +1,6 @@
 package com.webcrawler.service.parser;
 
-import com.webcrawler.service.Deduplicator;
+import com.webcrawler.service.extractor.Deduplicator;
 import com.webcrawler.service.extractor.UrlExtractor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ public class HtmlParser {
         log.info("Parsing for URL: {}", url);
         Document document = Jsoup.parse(htmlContent, url);
 
-        deduplicator.addUrl(url);
+        deduplicator.addUrlToDeduplication(url);
         urlExtractor.extract(document);
     }
 }
