@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -36,21 +37,10 @@ public class UrlExtractor {
             Elements links = document.select("a[href]");
             Elements meta = document.select("meta[name=description, meta=keywords]"); //TODO
 
-//            List<String> extractedUrls = links.stream().map(link ->
-//                            link.attr("abs:href"))
-//                    .filter(this::isValidUrl)
-//                    .filter(url -> {
-//                        if (!deduplicator.isNewUrl(url)) {
-//                            log.info("Skipping the duplicate url: {}", url);
-//                            return false;
-//                        }
-//                        return true;
-//                    })
-//                    .toList();
-
             List<LinkInfo> extractedUrls = links.stream()
                     .map(this::extractLinkInfo)
                     .filter(Objects::nonNull)
+                    .flatMap(Optional::stream)
                     .toList();
 
 
@@ -66,7 +56,7 @@ public class UrlExtractor {
                     })
                     .collect(Collectors.toList());
 
-            urls.stream().iterator().forEachRemaining(System.out::println);
+            urls.stream().iterator().forEachRemaining(System.out::println); // temp
             urlQueueService.addUrls(urls);
 
 //            extractedUrls.forEach(databaseService::saveLinkInfo);
@@ -78,10 +68,10 @@ public class UrlExtractor {
 
     }
 
-    private LinkInfo extractLinkInfo(Element link) {
+    private Optional<LinkInfo> extractLinkInfo(Element link) {
         String url = link.attr("abs:href");
         if (!isValidUrl(url)) {
-            return null;
+            return Optional.empty();
         }
 
         String anchorText = link.text().trim();
@@ -94,13 +84,11 @@ public class UrlExtractor {
                 .collect(Collectors.joining(" "));
 
         Set<String> keywords = keywordExtractor.extractKeywords(text);
-
-        return new LinkInfo(url, keywords);
-    }
-
-    private String stemWord(String word) {
-        // TODO
-        return "";
+        if (!keywords.isEmpty()) {
+            return Optional.of(new LinkInfo(url, keywords));
+        } else {
+            return Optional.empty();
+        }
     }
 
     public boolean isValidUrl(String url) {
