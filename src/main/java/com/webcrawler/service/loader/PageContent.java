@@ -1,4 +1,4 @@
-package com.webcrawler.model;
+package com.webcrawler.service.loader;
 
 import lombok.*;
 import org.springframework.http.HttpHeaders;

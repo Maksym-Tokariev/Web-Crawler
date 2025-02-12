@@ -42,8 +42,8 @@ public class CrawlerService {
                     if (!urlQueueService.isEmpty()) {
                         String url = urlQueueService.takeUrl();
                         return crawlUrl(url);
-                    }
-                    return Flux.empty();
+                    } else
+                        return Flux.empty();
                 }, MAX_CONCURRENCY)
                 .doOnComplete(() -> log.debug("Crawling completed with {} URLs.", parseCount.get()))
                 .subscribe();

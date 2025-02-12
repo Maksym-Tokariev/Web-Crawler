@@ -3,7 +3,6 @@ package com.webcrawler.service.loader;
 import com.webcrawler.exceptions.ClientErrorException;
 import com.webcrawler.exceptions.RedirectException;
 import com.webcrawler.exceptions.ServerErrorException;
-import com.webcrawler.model.PageContent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

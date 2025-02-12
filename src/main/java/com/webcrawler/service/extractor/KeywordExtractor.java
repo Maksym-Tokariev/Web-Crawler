@@ -17,6 +17,10 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * This class removes stop words from the text and performs word stemming.
+ */
+
 @Slf4j
 @Service
 @Data

@@ -1,5 +1,6 @@
 package com.webcrawler.service.extractor;
 
+import com.webcrawler.model.LinkInfo;
 import com.webcrawler.service.DatabaseService;
 import com.webcrawler.service.queue.UrlQueueService;
 import lombok.Data;
@@ -8,6 +9,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Objects;
@@ -17,8 +19,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
-* Extract links from a page and adds them to a queue.
-*/
+ * Extract links from a page and adds them to a queue.
+ */
 
 @Slf4j
 @Service
@@ -59,9 +61,13 @@ public class UrlExtractor {
             urls.stream().iterator().forEachRemaining(System.out::println); // temp
             urlQueueService.addUrls(urls);
 
-//            extractedUrls.forEach(databaseService::saveLinkInfo);
+            extractedUrls.forEach(databaseService::saveLinkInfo);
 
-            log.info("Extracted and saved {} links with keywords", extractedUrls.size());
+            Flux.fromIterable(extractedUrls)
+                    .flatMap(databaseService::saveLinkInfo)
+                    .doOnComplete(() -> log.info("Extracted and saved {} links with keywords", extractedUrls.size()))
+                    .subscribe();
+
         } catch (Exception e) {
             log.error("Failed to extract urls: {}", e.getMessage(), e);
         }
@@ -95,7 +101,7 @@ public class UrlExtractor {
         if (!url.startsWith("http")) {
             return false;
         }
-        String[] invalidUrls = {".jpg", ".png", ".gif", ".pdf", ".zip", ".rar", ".exe" };
+        String[] invalidUrls = {".jpg", ".png", ".gif", ".pdf", ".zip", ".rar", ".exe"};
         for (String ext : invalidUrls) {
             if (url.toLowerCase().endsWith(ext)) {
                 log.debug("Invalid URL: {}. The URL must contain 'http/https' and shouldn't have a [{}] extension",

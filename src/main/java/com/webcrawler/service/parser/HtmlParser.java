@@ -20,9 +20,9 @@ public class HtmlParser {
     private final UrlExtractor urlExtractor;
     private final Deduplicator deduplicator;
 
-    /**
+    /*
      * Parse HTML content and return Document object.
-     * */
+     */
     public void parse(String htmlContent, String url) {
         log.info("Parsing for URL: {}", url);
         Document document = Jsoup.parse(htmlContent, url);
