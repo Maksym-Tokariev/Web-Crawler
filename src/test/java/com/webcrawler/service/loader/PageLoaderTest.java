@@ -2,7 +2,6 @@ package com.webcrawler.service.loader;
 
 import com.sun.net.httpserver.HttpServer;
 import com.webcrawler.exceptions.ClientErrorException;
-import com.webcrawler.model.PageContent;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.WebClient;

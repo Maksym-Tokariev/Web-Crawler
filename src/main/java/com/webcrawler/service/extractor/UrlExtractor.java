@@ -10,6 +10,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Objects;
@@ -33,45 +34,96 @@ public class UrlExtractor {
     private final DatabaseService databaseService;
 
     public void extract(Document document) {
-        try {
-            log.info("Extracting urls from document: {}", document.title());
+        log.info("Extracting urls from document: {}", document.title());
 
-            Elements links = document.select("a[href]");
-            Elements meta = document.select("meta[name=description, meta=keywords]"); //TODO
+        Elements links = document.select("a[href]");
+        Elements meta = document.select("meta[name=description, meta=keywords]"); //TODO
 
-            List<LinkInfo> extractedUrls = links.stream()
-                    .map(this::extractLinkInfo)
-                    .filter(Objects::nonNull)
-                    .flatMap(Optional::stream)
-                    .toList();
+        List<LinkInfo> extractedUrls = links.stream()
+                .map(this::extractLinkInfo)
+                .filter(Objects::nonNull)
+                .flatMap(Optional::stream)
+                .toList();
 
+        processUrls(extractedUrls)
+                .doOnComplete(() -> log.info("Extracted and saved {} links with keywords", extractedUrls.size()))
+                .subscribe(
+                        null,
+                        e -> log.error("Error while saving extracted links with keywords: {}", e.getMessage(), e)
+                );
+//            List<String> urls = extractedUrls.stream() --------------
+//                    .map(LinkInfo::getUrl)
+//                    .filter(Objects::nonNull)
+//                    .filter(url -> {
+//                        if (!deduplicator.isNewUrl(url)) {
+//                            log.info("Skipping the duplicate url: {}", url);
+//                            return false;
+//                        }
+//                        return true;
+//                    })
+//                    .collect(Collectors.toList());
+//
+//            List<String> urls = Flux.fromIterable(extractedUrls)
+//                    .map(LinkInfo::getUrl)
+//                    .filter(Objects::nonNull)
+//                    .flatMap(url -> deduplicator.isNewUrl(url)
+//                            .flatMap(isNew -> {
+//                                if (!isNew) {
+//                                    log.info("URL: {} is duplicate, skip", url);
+//                                    return Mono.empty();
+//                                } else {
+//                                    log.info("URL: {} is new", url);
+//                                    return Mono.just(url);
+//                                }
+//                            })
+//                    )
+//                    .collectList()
+//                            .flatMapMany(urls)
+//
+//            urls.stream().iterator().forEachRemaining(System.out::println); // temp
+//            urlQueueService.addUrls(urls);
+//
+//            extractedUrls.forEach(databaseService::saveLinkInfo);
+//
+//            Flux.fromIterable(extractedUrls)
+//                    .flatMap(databaseService::saveLinkInfo)
+//                    .doOnComplete(() -> log.info("Extracted and saved {} links with keywords", extractedUrls.size()))
+//                    .subscribe();
+    }
 
-            List<String> urls = extractedUrls.stream()
-                    .map(LinkInfo::getUrl)
-                    .filter(Objects::nonNull)
-                    .filter(url -> {
-                        if (!deduplicator.isNewUrl(url)) {
-                            log.info("Skipping the duplicate url: {}", url);
-                            return false;
-                        }
-                        return true;
-                    })
-                    .collect(Collectors.toList());
+    private Flux<LinkInfo> processUrls(List<LinkInfo> extractedUrls) {
+        return Flux.fromIterable(extractedUrls)
+                .map(LinkInfo::getUrl)
+                .filter(Objects::nonNull)
+                .filterWhen(this::filterNewUrls)
+                .collectList()
+                .flatMapMany(urls -> {
+                    logUrls(urls);
+                    urlQueueService.addUrls(urls);
+                    return saveLinkInfo(extractedUrls);
+                });
+    }
 
-            urls.stream().iterator().forEachRemaining(System.out::println); // temp
-            urlQueueService.addUrls(urls);
+    private Flux<LinkInfo> saveLinkInfo(List<LinkInfo> extractedUrls) {
+        return Flux.fromIterable(extractedUrls)
+                .flatMap(databaseService::saveLinkInfo);
+    }
 
-            extractedUrls.forEach(databaseService::saveLinkInfo);
+    private void logUrls(List<String> urls) {
+        urls.forEach(url -> log.debug("Processing URL: {}", url));
+    }
 
-            Flux.fromIterable(extractedUrls)
-                    .flatMap(databaseService::saveLinkInfo)
-                    .doOnComplete(() -> log.info("Extracted and saved {} links with keywords", extractedUrls.size()))
-                    .subscribe();
-
-        } catch (Exception e) {
-            log.error("Failed to extract urls: {}", e.getMessage(), e);
-        }
-
+    public Mono<Boolean> filterNewUrls(String url) {
+        return deduplicator.isNewUrl(url)
+                .flatMap(isNew -> {
+                    if (!isNew) {
+                        log.debug("URL: {} is duplicate, skip", url);
+                        return Mono.just(true);
+                    } else {
+                        log.debug("URL: {} is new", url);
+                        return Mono.just(false);
+                    }
+                });
     }
 
     private Optional<LinkInfo> extractLinkInfo(Element link) {

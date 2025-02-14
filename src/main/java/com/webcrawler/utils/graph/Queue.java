@@ -20,7 +20,7 @@ public class Queue {
         queueArray[++rear] = value;
     }
 
-    public int remote() {
+    public int remove() {
         int temp = queueArray[front];
         if (front == SIZE - 1) {
             front = 0;
