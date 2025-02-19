@@ -12,7 +12,6 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@Data
 public class StopWordLoader {
 
     public Set<String> loadStopWord(String filePath) {

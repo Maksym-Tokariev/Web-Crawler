@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.util.Objects;
+
 @Slf4j
 @Data
 @Service
@@ -15,14 +17,11 @@ public class DatabaseService {
     private final LinkInfoRepo linkInfoRepo;
 
     public Mono<LinkInfo> saveLinkInfo(LinkInfo linkInfo) {
-
-        log.info("LinkInfo: {} saved", linkInfo);
         return linkInfoRepo.save(linkInfo)
-                .doOnSuccess(savedLinkInfo -> log.info("LinkInfo: {} saved", savedLinkInfo))
-                .onErrorResume(e -> {
-                    log.error("Error in saving link info: {}, message: {}",
-                        linkInfo, e.getMessage(), e);
-                    return Mono.empty();
-                });
+                .filter(Objects::nonNull)
+                .doOnSuccess(savedLinkInfo -> log.info("LinkInfo for: {} saved", savedLinkInfo.getUrl()))
+                .doOnError(e -> log.error("Error in saving link info: {}, message: {}",
+                        linkInfo.getUrl(), e.getMessage(), e)
+                );
     }
 }

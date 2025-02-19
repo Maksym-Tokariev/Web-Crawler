@@ -14,5 +14,4 @@ public class PageContent {
     private String htmlContent;
     private HttpHeaders headers;
     private HttpStatusCode statusCode;
-
 }

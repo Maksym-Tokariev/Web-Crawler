@@ -1,24 +1,20 @@
 package com.webcrawler.service.extractor;
 
 import com.webcrawler.utils.StopWordLoader;
+import edu.stanford.nlp.ling.CoreAnnotations;
+import edu.stanford.nlp.ling.CoreLabel;
+import edu.stanford.nlp.pipeline.Annotation;
+import edu.stanford.nlp.pipeline.StanfordCoreNLP;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.io.StringReader;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * This class removes stop words from the text and performs word stemming.
+   This class removes stop words from the text and performs word lemming.
  */
 
 @Slf4j
@@ -27,6 +23,9 @@ import java.util.stream.Collectors;
 public class KeywordExtractor {
 
     private final StopWordLoader stopWordLoader;
+
+    private StanfordCoreNLP stanfordCoreNLP;
+
     @Value("${file.path.stop.words.en}")
     private String STOP_WORDS_EN;
 
@@ -51,31 +50,36 @@ public class KeywordExtractor {
                 .filter(word -> !stopEn.contains(word))
                 .filter(word -> !stopRu.contains(word))
                 .map(String::toLowerCase)
-                .map(this::stemWord)
+                .map(this::lemmatizeWord)
+                .filter(Optional::isPresent)
+                .flatMap(Optional::stream)
                 .collect(Collectors.toSet());
     }
 
-    private String stemWord(String word) {
-        try {
-            log.debug("Stem word: {}", word);
-            Analyzer analyzer = new StandardAnalyzer();
-            TokenStream tokenStream = analyzer.tokenStream(null, new StringReader(word));
-            CharTermAttribute termAttribute = tokenStream.addAttribute(CharTermAttribute.class);
-            tokenStream.reset();
+    public Optional<String> lemmatizeWord(String word) {
+        log.debug("Lemmatize word {}", word);
 
-            String res = null;
-            if (tokenStream.incrementToken()) {
-                res = termAttribute.toString();
-            }
-            tokenStream.end();
-            tokenStream.close();
-            analyzer.close();
-
-            log.trace("Stemmed word: {}", res);
-            return res;
-        } catch (IOException e) {
-            log.error("Failed to stem word: {}", word, e);
-            return null;
+        if (word == null || word.isEmpty()) {
+            return Optional.empty();
         }
+
+        Properties prop = new Properties();
+        prop.setProperty("annotators", "tokenize,ssplit,pos,lemma");
+        stanfordCoreNLP = new StanfordCoreNLP(prop);
+
+        Annotation document = new Annotation(word);
+        stanfordCoreNLP.annotate(document);
+
+        List<CoreLabel> tokens = document.get(CoreAnnotations.TokensAnnotation.class);
+        for (CoreLabel token : tokens) {
+            String posTag = token.get(CoreAnnotations.PartOfSpeechAnnotation.class);
+            String lemma = token.get(CoreAnnotations.LemmaAnnotation.class);
+
+            log.trace("Token: {}, POS Tag: {}, Lemma: {}", token.originalText(), posTag, lemma);
+            if (lemma != null && !lemma.equals("O")) {
+                return Optional.of(lemma);
+            }
+        }
+        return Optional.empty();
     }
 }

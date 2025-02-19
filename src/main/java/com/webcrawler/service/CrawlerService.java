@@ -17,10 +17,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class CrawlerService {
 
     @Value("${service.max.concurrency}")
-    private int MAX_CONCURRENCY;
+    public int MAX_CONCURRENCY;
 
     @Value("${service.max.parse.count}")
-    private int MAX_PARSE_COUNT;
+    public int MAX_PARSE_COUNT;
 
     private final PageLoader pageLoader;
 
@@ -47,9 +47,10 @@ public class CrawlerService {
                 }, MAX_CONCURRENCY)
                 .doOnComplete(() -> log.debug("Crawling completed with {} URLs.", parseCount.get()))
                 .subscribe();
+
     }
 
-    private Mono<Void> crawlUrl(String url) {
+    public Mono<Void> crawlUrl(String url) {
         log.debug("Start crawling URL {}", url);
         return pageLoader.loadPageWithDelay(url, 5000)
                 .filter(Objects::nonNull)
@@ -59,8 +60,8 @@ public class CrawlerService {
                     return Mono.empty();
                 })
                 .onErrorResume(e -> {
-                   log.error("Error while crawling URL {}", url, e);
-                   return Mono.empty();
+                    log.error("Error while crawling URL {}", url, e);
+                    return Mono.empty();
                 }).then();
     }
 }

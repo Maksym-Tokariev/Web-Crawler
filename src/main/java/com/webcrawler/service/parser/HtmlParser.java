@@ -7,9 +7,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 /**
- * HTML Parser
+   HTML Parser
  * */
 
 @Slf4j
@@ -20,14 +21,15 @@ public class HtmlParser {
     private final UrlExtractor urlExtractor;
     private final Deduplicator deduplicator;
 
-    /*
-     * Parse HTML content and return Document object.
+    /**
+       Parse HTML content and return Document object.
      */
     public void parse(String htmlContent, String url) {
         log.info("Parsing for URL: {}", url);
         Document document = Jsoup.parse(htmlContent, url);
-
-        deduplicator.addUrlToDeduplication(url);
+        deduplicator.addUrlToDeduplication(url).subscribe();
         urlExtractor.extract(document);
+//        return deduplicator.addUrlToDeduplication(url)
+//                .then(Mono.fromRunnable(() -> urlExtractor.extract(document)));
     }
 }

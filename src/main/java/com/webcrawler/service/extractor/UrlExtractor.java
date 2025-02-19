@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Extract links from a page and adds them to a queue.
+   Extract links from a page and adds them to a queue.
  */
 
 @Slf4j
@@ -51,60 +51,24 @@ public class UrlExtractor {
                         null,
                         e -> log.error("Error while saving extracted links with keywords: {}", e.getMessage(), e)
                 );
-//            List<String> urls = extractedUrls.stream() --------------
-//                    .map(LinkInfo::getUrl)
-//                    .filter(Objects::nonNull)
-//                    .filter(url -> {
-//                        if (!deduplicator.isNewUrl(url)) {
-//                            log.info("Skipping the duplicate url: {}", url);
-//                            return false;
-//                        }
-//                        return true;
-//                    })
-//                    .collect(Collectors.toList());
-//
-//            List<String> urls = Flux.fromIterable(extractedUrls)
-//                    .map(LinkInfo::getUrl)
-//                    .filter(Objects::nonNull)
-//                    .flatMap(url -> deduplicator.isNewUrl(url)
-//                            .flatMap(isNew -> {
-//                                if (!isNew) {
-//                                    log.info("URL: {} is duplicate, skip", url);
-//                                    return Mono.empty();
-//                                } else {
-//                                    log.info("URL: {} is new", url);
-//                                    return Mono.just(url);
-//                                }
-//                            })
-//                    )
-//                    .collectList()
-//                            .flatMapMany(urls)
-//
-//            urls.stream().iterator().forEachRemaining(System.out::println); // temp
-//            urlQueueService.addUrls(urls);
-//
-//            extractedUrls.forEach(databaseService::saveLinkInfo);
-//
-//            Flux.fromIterable(extractedUrls)
-//                    .flatMap(databaseService::saveLinkInfo)
-//                    .doOnComplete(() -> log.info("Extracted and saved {} links with keywords", extractedUrls.size()))
-//                    .subscribe();
     }
 
-    private Flux<LinkInfo> processUrls(List<LinkInfo> extractedUrls) {
+    public Flux<LinkInfo> processUrls(List<LinkInfo> extractedUrls) {
         return Flux.fromIterable(extractedUrls)
-                .map(LinkInfo::getUrl)
-                .filter(Objects::nonNull)
-                .filterWhen(this::filterNewUrls)
+                .filter(linkInfo -> linkInfo.getUrl() != null)
+                .filterWhen(linkInfo -> filterNewUrls(linkInfo.getUrl()))
                 .collectList()
                 .flatMapMany(urls -> {
-                    logUrls(urls);
-                    urlQueueService.addUrls(urls);
-                    return saveLinkInfo(extractedUrls);
+                    List<String> filteredUrls = urls.stream().map(LinkInfo::getUrl).toList();
+                    logUrls(filteredUrls);
+                    urlQueueService.addUrls(filteredUrls);
+                    log.info("Filtered URLs to be added to queue: {}", filteredUrls);
+                    return saveLinkInfo(urls);
                 });
     }
 
     private Flux<LinkInfo> saveLinkInfo(List<LinkInfo> extractedUrls) {
+        log.info("Saving extracted links with keywords in DB: {}", extractedUrls.size());
         return Flux.fromIterable(extractedUrls)
                 .flatMap(databaseService::saveLinkInfo);
     }
@@ -114,24 +78,27 @@ public class UrlExtractor {
     }
 
     public Mono<Boolean> filterNewUrls(String url) {
-        return deduplicator.isNewUrl(url)
-                .flatMap(isNew -> {
-                    if (!isNew) {
+        return deduplicator.hasUrl(url)
+                .flatMap(hasUrl -> {
+                    log.info("Has url [{}] - {}", url, hasUrl);
+                    if (hasUrl) {
                         log.debug("URL: {} is duplicate, skip", url);
-                        return Mono.just(true);
-                    } else {
-                        log.debug("URL: {} is new", url);
                         return Mono.just(false);
+                    } else {
+                        log.debug("URL: {} is new. Added to the Deduplicator", url);
+//                        deduplicator.addUrlToDeduplication(url).subscribe();
+                        return Mono.just(true);
                     }
                 });
     }
 
-    private Optional<LinkInfo> extractLinkInfo(Element link) {
+    public Optional<LinkInfo> extractLinkInfo(Element link) {
         String url = link.attr("abs:href");
         if (!isValidUrl(url)) {
             return Optional.empty();
         }
 
+        log.debug("Extracted link information from: {}", url);
         String anchorText = link.text().trim();
 
         String title = link.attr("title").trim();
@@ -141,7 +108,11 @@ public class UrlExtractor {
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.joining(" "));
 
+        log.debug("Extracted link information: {}", text);
+
         Set<String> keywords = keywordExtractor.extractKeywords(text);
+
+        log.debug("Extracted keywords: {}", keywords);
         if (!keywords.isEmpty()) {
             return Optional.of(new LinkInfo(url, keywords));
         } else {

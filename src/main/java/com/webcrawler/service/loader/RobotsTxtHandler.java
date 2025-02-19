@@ -2,7 +2,7 @@ package com.webcrawler.service.loader;
 
 import crawlercommons.robots.SimpleRobotRules;
 import crawlercommons.robots.SimpleRobotRulesParser;
-import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -12,16 +12,16 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
-/*
-* Processes the robot.txt file and method isAllowed returns permission to parse the site.
+/**
+  Processes the robot.txt file and method isAllowed returns permission to parse the site.
 */
 
 @Slf4j
 @Component
-@Data
+@NoArgsConstructor
 public class RobotsTxtHandler {
 
-    private Map<String, SimpleRobotRules> robotsCache = new HashMap<>();
+    private final Map<String, SimpleRobotRules> robotsCache = new HashMap<>();
     private final String userAgent = "MyWebCrawler";
 
     public Mono<Boolean> isAllowed(String url) {
@@ -32,7 +32,8 @@ public class RobotsTxtHandler {
 
             SimpleRobotRules rules = robotsCache.get(host);
             if (rules == null) {
-                return WebClient.create()
+                return WebClient
+                        .create()
                         .get()
                         .uri(robotsProtocol)
                         .retrieve()

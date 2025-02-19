@@ -5,13 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
- * The queue to store a links.
+   The queue to store a links.
  */
 
 @Slf4j
@@ -31,7 +30,9 @@ public class UrlQueueService {
         for (String link : links) {
             try {
                 queue.put(link);
-                System.out.println("Queue content: "+ Arrays.toString(queue.toArray()));
+                log.info("Queue content: {}", queue.size()
+//                        Arrays.toString(queue.toArray())
+                );
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Interrupted while adding URL: {}", link, e);
