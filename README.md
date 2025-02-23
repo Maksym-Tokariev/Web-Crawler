@@ -32,16 +32,19 @@ After startup, the crawler will:
 
 ## The archetype of the project
 
-[User] -> [CrawlerRunner]
-                ↓
-            [RabbitMQ]
-                ↓
-         [CrawlerService]
-                | (parallel threads)
-                ├── [PageLoader] → [RobotsTxtHandler]
-                ├─── [HtmlParser] → [UrlExtractor]
-                ├─── [Deduplicator] (Redis)
-                └── [DatabaseService] (MongoDB)
+```mermaid
+graph TD
+    A[CrawlerRunner] --> B[RabbitMQ]
+    B --> C[CrawlerService]
+    C --> D[PageLoader]
+    D --> E[RobotsTxtHandler]
+    C --> F[HtmlParser]
+    F --> G[UrlExtractor]
+    C --> H[Deduplicator]
+    C --> I[DatabaseService]
+    H --> J[(Redis)]
+    I --> K[(MongoDB)]
+```
 
 To start using it, you need to enter a start reference into the CrawlerRunner class. 
 Then crawler will extract links and keywords from 
