@@ -13,8 +13,8 @@ import reactor.netty.http.client.HttpClient;
 
 import java.time.Duration;
 
-/*
-* Configure the WebClient.
+/**
+  Configure the WebClient.
 */
 
 @Configuration

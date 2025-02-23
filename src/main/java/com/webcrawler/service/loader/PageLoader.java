@@ -17,8 +17,9 @@ import java.io.IOException;
 import java.time.Duration;
 
 /**
-   Responsible for loading websites by URL.
-   Processes Http-requests and places page content into class PageContent.
+ * Responsible for loading websites by URL.
+ * Processes Http-requests and places page content into class PageContent.
+ * Process redirects, client and server errors.
  */
 
 @Slf4j
@@ -32,6 +33,9 @@ public class PageLoader {
     private final RobotsTxtHandler robotsHandler;
 
 
+    /**
+     * Loads a page with defined delay and checks for access permission by robot.txt file.
+     */
     public Mono<PageContent> loadPageWithDelay(String url, long delayMillis) {
         return robotsHandler.isAllowed(url)
                 .flatMap(isAllowed -> {
@@ -50,6 +54,10 @@ public class PageLoader {
                 });
     }
 
+    /**
+     * Load the page by the defined URL and handles redirects and errors.
+     * Return PageContent class that representing the content of the page.
+     */
     public Mono<PageContent> loadPage(String url, int redirectCount) {
         if (redirectCount > MAX_REDIRECTS) {
             return Mono.error(new RedirectException("Too many redirects", null));

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -36,31 +37,30 @@ public class CrawlerService {
         this.urlQueueService = urlQueueService;
     }
 
-    public void startCrawling() {
-        Flux.range(1, MAX_PARSE_COUNT)
-                .flatMap(i -> {
-                    if (!urlQueueService.isEmpty()) {
-                        String url = urlQueueService.takeUrl();
-                        return crawlUrl(url);
-                    } else
-                        return Flux.empty();
-                }, MAX_CONCURRENCY)
-                .doOnComplete(() -> log.debug("Crawling completed with {} URLs.", parseCount.get()))
-                .subscribe();
 
+    /**
+     * Starts process of crawling.
+     * Process will be run until parseCount reaches the MAX_PARSE_COUNT.
+     */
+    public Mono<Void> startCrawling() {
+        return urlQueueService.consumeUrls()
+                .takeWhile(i -> parseCount.get() < MAX_PARSE_COUNT)
+                .flatMap(this::crawlUrl, MAX_CONCURRENCY)
+                .doOnSubscribe(i -> log.info("Crawling started"))
+                .doOnTerminate(() -> log.info("Crawling completed after {} URLs", parseCount.get()))
+                .then();
     }
 
+    /**
+     * Handles loading and parsing URL.
+     */
     public Mono<Void> crawlUrl(String url) {
-        log.debug("Start crawling URL {}", url);
         return pageLoader.loadPageWithDelay(url, 5000)
-                .filter(Objects::nonNull)
-                .flatMap(pageContent -> {
-                    parser.parse(pageContent.getHtmlContent(), url);
-                    parseCount.incrementAndGet();
-                    return Mono.empty();
-                })
+                .flatMap(pageContent -> parser.parse(pageContent.getHtmlContent(), url))
+                .flatMap(urlQueueService::addUrls)
+                .doOnSuccess(count -> parseCount.incrementAndGet())
                 .onErrorResume(e -> {
-                    log.error("Error while crawling URL {}", url, e);
+                    log.error("Error crawling URL: {}", url, e);
                     return Mono.empty();
                 }).then();
     }

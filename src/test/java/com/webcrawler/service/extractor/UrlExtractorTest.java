@@ -3,25 +3,35 @@ package com.webcrawler.service.extractor;
 import com.webcrawler.model.LinkInfo;
 import com.webcrawler.service.DatabaseService;
 import com.webcrawler.service.queue.UrlQueueService;
+import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.parser.Tag;
-import org.junit.jupiter.api.Assertions;
+import org.jsoup.select.Elements;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-
 public class UrlExtractorTest {
+
+    @Mock
+    private Element element;
+
+    @Mock
+    private Document document;
+
+    @Mock
+    private Elements elements;
 
     @Mock
     private UrlQueueService urlQueueService;
@@ -36,106 +46,124 @@ public class UrlExtractorTest {
     private DatabaseService databaseService;
 
     @InjectMocks
-    private UrlExtractor urlExtractor;
+    private UrlExtractor extractor;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         MockitoAnnotations.openMocks(this);
     }
 
     @Test
-    void testProcessUrls() {
-        List<LinkInfo> urls = List.of(
-                new LinkInfo("http://example1.com", Set.of("example")),
-                new LinkInfo("http://example2.com", Set.of("example"))
-        );
+    void testExtract() {
+        Element element1 = new Element("a");
+        element1.attr("abs:href", "https://example.com");
+        element1.text("Example Link 1");
 
-        when(deduplicator.hasUrl(anyString())).thenReturn(Mono.just(true));
-        when(databaseService.saveLinkInfo(any(LinkInfo.class))).thenReturn(
-                Mono.just(new LinkInfo("http://example1.com", Set.of("example")))
-        );
-        when(databaseService.saveLinkInfo(any(LinkInfo.class))).thenReturn(
-                Mono.just(new LinkInfo("http://example2.com", Set.of("example")))
-        );
+        Element element2 = new Element("a");
+        element2.attr("abs:href", "https://example2.com");
+        element2.text("Example Link 2");
 
-        StepVerifier.create(urlExtractor.processUrls(urls))
-                .expectNextCount(2)
-                .verifyComplete();
+        when(document.title()).thenReturn("Title");
+        when(elements.iterator()).thenReturn(List.of(element1, element2).iterator());
+        when(document.select("a[href]")).thenReturn(elements);
 
-        verify(deduplicator, times(2)).hasUrl(anyString());
-        verify(urlQueueService).addUrls(List.of("http://example1.com", "http://example2.com"));
-        verify(databaseService, times(2)).saveLinkInfo(any(LinkInfo.class));
+        when(keywordExtractor.extractKeywords(any(String.class)))
+                .thenReturn(Mono.just(Set.of("example")));
+
+        when(deduplicator.isNotProcessed("https://example.com")).thenReturn(Mono.just(true));
+        when(deduplicator.isNotProcessed("https://example2.com")).thenReturn(Mono.just(false));
+
+        when(databaseService.saveAllLinkInfo(any(List.class))).thenReturn(Mono.empty());
+        when(urlQueueService.addUrls(any(List.class))).thenReturn(Mono.empty());
+
+        Mono<List<LinkInfo>> result = extractor.extract(document);
+
+        result.subscribe(actualLinkInfos -> {
+            assertEquals(1, actualLinkInfos.size());
+            assertEquals("https://example.com", actualLinkInfos.get(0).getUrl());
+        });
+
+        verify(document, times(1)).select("a[href]");
+        verify(keywordExtractor, times(2)).extractKeywords(any(String.class));
+        verify(deduplicator, times(1)).isNotProcessed("https://example.com");
+        verify(deduplicator, times(1)).isNotProcessed("https://example2.com");
+        verify(databaseService, times(1)).saveAllLinkInfo(any(List.class));
+        verify(urlQueueService, times(1)).addUrls(any(List.class));
     }
 
     @Test
-    void testProcessUrlsWithDuplicateUrls() {
-        List<LinkInfo> extractedUrls = List.of(
-                new LinkInfo("http://example1.com", Set.of("example")),
-                new LinkInfo("http://example2.com", Set.of("example"))
-        );
+    void testProcessUrl() {
+        List<LinkInfo> linkInfos = new ArrayList<>();
+        linkInfos.add(new LinkInfo("https://example.com", Set.of("example")));
+        linkInfos.add(new LinkInfo("https://example2.com", Set.of("example2")));
 
-        when(deduplicator.hasUrl("http://example1.com")).thenReturn(Mono.just(false));
-        when(deduplicator.hasUrl("http://example2.com")).thenReturn(Mono.just(true));
-        when(databaseService.saveLinkInfo(any(LinkInfo.class))).thenReturn(Mono.just(new LinkInfo("http://example2.com", Set.of("example"))));
+        when(deduplicator.isNotProcessed(anyString())).thenReturn(Mono.just(true));
+        when(databaseService.saveAllLinkInfo(any(List.class))).thenReturn(Mono.empty());
+        when(urlQueueService.addUrls(any(List.class))).thenReturn(Mono.empty());
 
-        StepVerifier.create(urlExtractor.processUrls(extractedUrls))
-                .expectNextMatches(linkInfo ->
-                        linkInfo.getUrl().equals("http://example2.com")
-                )
-                .verifyComplete();
+        Mono<List<LinkInfo>> res = extractor.processUrls(linkInfos);
 
-        verify(deduplicator, times(2)).hasUrl(anyString());
-        verify(urlQueueService).addUrls(List.of("http://example2.com"));
-        verify(databaseService).saveLinkInfo(any(LinkInfo.class));
+        res.subscribe(linkInfos1 -> {
+            assertEquals(1, linkInfos1.size());
+            assertEquals("https://example.com", linkInfos1.get(0).getUrl());
+        });
+
+        verify(deduplicator, times(1)).isNotProcessed("https://example.com");
+        verify(deduplicator, times(1)).isNotProcessed("https://example2.com");
+        verify(databaseService, times(1)).saveAllLinkInfo(any(List.class));
+        verify(urlQueueService, times(1)).addUrls(any(List.class));
     }
 
     @Test
-    void testExtractLinkInfo() {
-        Element link = new Element(Tag.valueOf("a"), "")
-                .attr("abs:href", "http://example.com")
-                .attr("title", "Example Title")
-                .attr("alt", "Example Alt Text")
-                .text("Example Anchor Text");
+    void testGetLinkTextEmptyTitleAndAlt() {
+        when(element.attr("abs:href")).thenReturn("https://example.com");
+        when(element.text()).thenReturn("Example Link");
+        when(element.attr("title")).thenReturn("");
+        when(element.attr("alt")).thenReturn("");
 
-        Set<String> keywords = Set.of("example", "title", "alt", "text");
-        when(keywordExtractor.extractKeywords(anyString())).thenReturn(keywords);
+        String expectedLinkText = "Example Link";
+        String actualLinkText = extractor.getLinkText(element);
 
-        Optional<LinkInfo> linkInfo = urlExtractor.extractLinkInfo(link);
-
-        Assertions.assertTrue(linkInfo.isPresent());
-        Assertions.assertEquals("http://example.com", linkInfo.get().getUrl());
-        Assertions.assertEquals(keywords, linkInfo.get().getKeywords());
-
-        verify(keywordExtractor, times(1)).extractKeywords(anyString());
+        assertEquals(expectedLinkText, actualLinkText);
     }
 
     @Test
-    void testExtractLinkInfoInvalidUrl() {
-        Element link = new Element(Tag.valueOf("a"), "")
-                .attr("abs:href", "ftp://example.com");
+    void testGetLinkTextEmptyAlt() {
+        when(element.attr("abs:href")).thenReturn("https://example.com");
+        when(element.text()).thenReturn("Example Link");
+        when(element.attr("title")).thenReturn("Title");
+        when(element.attr("alt")).thenReturn("");
 
-        Optional<LinkInfo> linkInfo = urlExtractor.extractLinkInfo(link);
+        String expectedLinkText = "Example Link Title";
+        String actualLinkText = extractor.getLinkText(element);
 
-        Assertions.assertFalse(linkInfo.isPresent());
-
-        verify(keywordExtractor, times(0)).extractKeywords(anyString());
+        assertEquals(expectedLinkText, actualLinkText);
     }
 
     @Test
-    void testExtractLinkInfoEmptyKeywords() {
-        Element link = new Element(Tag.valueOf("a"), "")
-                .attr("abs:href", "http://example.com")
-                .attr("title", "Example Title")
-                .attr("alt", "Example Alt Text")
-                .text("Example Anchor Text");
+    void testGetLinkTextEmptyTitle() {
+        when(element.attr("abs:href")).thenReturn("https://example.com");
+        when(element.text()).thenReturn("Example Link");
+        when(element.attr("title")).thenReturn("");
+        when(element.attr("alt")).thenReturn("Alt");
 
-        when(keywordExtractor.extractKeywords(anyString())).thenReturn(Set.of());
+        String expectedLinkText = "Example Link Alt";
+        String actualLinkText = extractor.getLinkText(element);
 
-        Optional<LinkInfo> linkInfo = urlExtractor.extractLinkInfo(link);
+        assertEquals(expectedLinkText, actualLinkText);
+    }
 
-        Assertions.assertFalse(linkInfo.isPresent());
+    @Test
+    void testGetLinkTextEmptyText() {
+        when(element.attr("abs:href")).thenReturn("https://example.com");
+        when(element.text()).thenReturn("");
+        when(element.attr("title")).thenReturn("Title");
+        when(element.attr("alt")).thenReturn("Alt");
 
-        verify(keywordExtractor, times(1)).extractKeywords(anyString());
+        String expectedLinkText = "Title Alt";
+        String actualLinkText = extractor.getLinkText(element);
+
+        assertEquals(expectedLinkText, actualLinkText);
     }
 
 }

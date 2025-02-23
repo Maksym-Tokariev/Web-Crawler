@@ -12,8 +12,11 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.given;
 
 public class DeduplicatorTest {
 
@@ -33,40 +36,63 @@ public class DeduplicatorTest {
     }
 
     @Test
-    void testAddUrl() {
+    void testMarkAsVisited() {
         String url = "http://example.com/page";
+        String key = "url:" + url;
 
-        when(valueOps.set(anyString(), anyString(), any(Duration.class))).thenReturn(Mono.just(true));
+        when(valueOps.setIfAbsent(eq(key), eq(url), any(Duration.class))).thenReturn(Mono.just(true));
 
-        StepVerifier.create(deduplicator.addUrlToDeduplication(url))
-                .verifyComplete();
+        Mono<Boolean> res = deduplicator.markAsVisited(url);
 
-        verify(valueOps, times(1)).set(eq("url:http://example.com/page"), eq(url), any(Duration.class));
-    }
-
-    @Test
-    void testHasUrlTrue() {
-        String url = "http://example.com/page";
-
-        when(redisTemplate.hasKey(anyString())).thenReturn(Mono.just(true));
-
-        StepVerifier.create(deduplicator.hasUrl(url))
+        StepVerifier.create(res)
                 .expectNext(true)
                 .verifyComplete();
 
-        verify(redisTemplate, times(1)).hasKey("url:http://example.com/page");
+        verify(valueOps, times(1)).setIfAbsent(eq(key), eq(url), any(Duration.class));
     }
 
     @Test
-    void testHasUrlFalse() {
+    void testIsNotProcessed_shouldReturnTrueWhenKeyDoesNotExist() {
         String url = "http://example.com/page";
+        String key = "url:" + url;
 
-        when(redisTemplate.hasKey(anyString())).thenReturn(Mono.just(false));
+        when(redisTemplate.hasKey(key)).thenReturn(Mono.just(false));
 
-        StepVerifier.create(deduplicator.hasUrl(url))
+        Mono<Boolean> res = deduplicator.isNotProcessed(url);
+
+        StepVerifier.create(res)
+                .expectNext(true)
+                .verifyComplete();
+
+        verify(redisTemplate, times(1)).hasKey(key);
+    }
+
+    @Test
+    void testIsNotProcessed_shouldReturnFalseWhenKeyExists() {
+        String url = "http://example.com/page";
+        String key = "url:" + url;
+
+        when(redisTemplate.hasKey(key)).thenReturn(Mono.just(true));
+
+        Mono<Boolean> res = deduplicator.isNotProcessed(url);
+
+        StepVerifier.create(res)
                 .expectNext(false)
                 .verifyComplete();
 
-        verify(redisTemplate, times(1)).hasKey("url:http://example.com/page");
+        verify(redisTemplate, times(1)).hasKey(key);
+    }
+
+    @Test
+    void testFilterNewUrls() {
+        List<String> urls = Arrays.asList("http://example.com/page1", "http://example.com/page2", "http://example.com/page3");
+
+        given(redisTemplate.hasKey(anyString())).willReturn(Mono.just(false));
+
+        Mono<List<String>> res = deduplicator.filterNewUrls(urls);
+
+        StepVerifier.create(res)
+                .expectNext(urls)
+                .verifyComplete();
     }
 }

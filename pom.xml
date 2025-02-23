@@ -29,7 +29,21 @@
     <properties>
         <java.version>23</java.version>
         <jsoup.version>1.18.3</jsoup.version>
-        <jedis.version>5.2.0</jedis.version>
+        <reactor-rabbitmq.version>1.5.6</reactor-rabbitmq.version>
+        <lettuce.version>4.5.0.Final</lettuce.version>
+        <stanford-corenlp.version>4.5.8</stanford-corenlp.version>
+        <crawler-commons.version>1.2</crawler-commons.version>
+        <junit.version>4.13.2</junit.version>
+        <junit-jupiter-engine.version>5.11.4</junit-jupiter-engine.version>
+        <junit-jupiter-params.version>5.11.4</junit-jupiter-params.version>
+        <junit-jupiter-api.version>5.11.4</junit-jupiter-api.version>
+        <mockito-junit-jupiter.version>5.15.2</mockito-junit-jupiter.version>
+        <mockwebserver.version>4.9.1</mockwebserver.version>
+        <mockito-core.version>5.15.2</mockito-core.version>
+        <reactor-test.version>3.4.12</reactor-test.version>
+        <stanford-corenlp-modules.version>4.5.2</stanford-corenlp-modules.version>
+        <lucene-core.version>10.1.0</lucene-core.version>
+        <lettuce-core.version>6.2.4.RELEASE</lettuce-core.version>
     </properties>
     <build>
         <plugins>
@@ -72,12 +86,28 @@
 
     <dependencies>
 
-        <!-- DB -->
+        <!-- RabbitMQ -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>io.projectreactor.rabbitmq</groupId>
+            <artifactId>reactor-rabbitmq</artifactId>
+            <version>${reactor-rabbitmq.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+
+        <!-- RabbitMQ -->
+
+
+        <!-- DB -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -91,7 +121,13 @@
         <dependency>
             <groupId>biz.paluch.redis</groupId>
             <artifactId>lettuce</artifactId>
-            <version>4.5.0.Final</version>
+            <version>${lettuce.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>${lettuce-core.version}</version>
         </dependency>
 
         <dependency>
@@ -107,11 +143,7 @@
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
-        <!--        <dependency>-->
-        <!--            <groupId>com.oracle.database.jdbc</groupId>-->
-        <!--            <artifactId>ojdbc11</artifactId>-->
-        <!--            <scope>runtime</scope>-->
-        <!--        </dependency>-->
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -121,19 +153,19 @@
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-core</artifactId>
-            <version>10.1.0</version>
+            <version>${lucene-core.version}</version>
         </dependency>
 
         <dependency>
             <groupId>edu.stanford.nlp</groupId>
             <artifactId>stanford-corenlp</artifactId>
-            <version>4.5.8</version>
+            <version>${stanford-corenlp.version}</version>
         </dependency>
 
         <dependency>
             <groupId>edu.stanford.nlp</groupId>
             <artifactId>stanford-corenlp</artifactId>
-            <version>4.5.2</version>
+            <version>${stanford-corenlp-modules.version}</version>
             <classifier>models</classifier>
         </dependency>
 
@@ -154,56 +186,56 @@
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-test</artifactId>
-            <version>3.4.12</version>
+            <version>${reactor-test.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>5.15.2</version>
+            <version>${mockito-core.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>mockwebserver</artifactId>
-            <version>4.9.1</version>
+            <version>${mockwebserver.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-junit-jupiter</artifactId>
-            <version>5.15.2</version>
+            <version>${mockito-junit-jupiter.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.11.4</version>
+            <version>${junit-jupiter-api.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-params</artifactId>
-            <version>5.11.4</version>
+            <version>${junit-jupiter-params.version}</version> <!--version error maybe-->
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.11.4</version>
+            <version>${junit-jupiter-engine.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.13.2</version>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -230,7 +262,7 @@
         <dependency>
             <groupId>com.github.crawler-commons</groupId>
             <artifactId>crawler-commons</artifactId>
-            <version>1.2</version>
+            <version>${crawler-commons.version}</version>
         </dependency>
 
     </dependencies>

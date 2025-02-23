@@ -3,29 +3,28 @@ package com.webcrawler.service.extractor;
 import com.webcrawler.model.LinkInfo;
 import com.webcrawler.service.DatabaseService;
 import com.webcrawler.service.queue.UrlQueueService;
-import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
-   Extract links from a page and adds them to a queue.
+   Extract links from a page and adds them to a queue and DB.
  */
 
 @Slf4j
 @Service
-@Data
+@RequiredArgsConstructor
 public class UrlExtractor {
 
     private final UrlQueueService urlQueueService;
@@ -33,106 +32,81 @@ public class UrlExtractor {
     private final KeywordExtractor keywordExtractor;
     private final DatabaseService databaseService;
 
-    public void extract(Document document) {
-        log.info("Extracting urls from document: {}", document.title());
 
-        Elements links = document.select("a[href]");
-        Elements meta = document.select("meta[name=description, meta=keywords]"); //TODO
+    /**
+     * Starts the process of extracting urls and keywords from a document and returns a LinkInfo class.
+     */
+    public Mono<List<LinkInfo>> extract(Document document) {
+        return Mono.fromCallable(() -> {
+                    log.info("Extracting urls from document: {}", document.title());
+                    return document.select("a[href]");
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(Flux::fromIterable)
+                .flatMap(this::processElement)
+                .collectList()
+                .flatMap(this::processUrls);
+    }
 
-        List<LinkInfo> extractedUrls = links.stream()
-                .map(this::extractLinkInfo)
-                .filter(Objects::nonNull)
-                .flatMap(Optional::stream)
-                .toList();
-
-        processUrls(extractedUrls)
-                .doOnComplete(() -> log.info("Extracted and saved {} links with keywords", extractedUrls.size()))
-                .subscribe(
-                        null,
-                        e -> log.error("Error while saving extracted links with keywords: {}", e.getMessage(), e)
+    /**
+     * Extract keyword from a link and create a LinkInfo class with the url and keywords.
+     */
+    private Mono<LinkInfo> processElement(Element link) {
+        return Mono.fromCallable(() -> link.attr("abs:href"))
+                .filter(this::isValidUrl)
+                .flatMap(url ->
+                        keywordExtractor.extractKeywords(getLinkText(link))
+                                .map(keywords -> new LinkInfo(url, keywords))
                 );
     }
 
-    public Flux<LinkInfo> processUrls(List<LinkInfo> extractedUrls) {
+    /**
+     * Checks whether the URL has been visited,
+     * if not, then adds it's along with the text to the DB and queue.
+     */
+    public Mono<List<LinkInfo>> processUrls(List<LinkInfo> extractedUrls) {
+        log.trace("processing urls from list: {}", extractedUrls);
         return Flux.fromIterable(extractedUrls)
                 .filter(linkInfo -> linkInfo.getUrl() != null)
-                .filterWhen(linkInfo -> filterNewUrls(linkInfo.getUrl()))
+                .filterWhen(linkInfo -> deduplicator.isNotProcessed(linkInfo.getUrl()))
                 .collectList()
-                .flatMapMany(urls -> {
-                    List<String> filteredUrls = urls.stream().map(LinkInfo::getUrl).toList();
-                    logUrls(filteredUrls);
-                    urlQueueService.addUrls(filteredUrls);
-                    log.info("Filtered URLs to be added to queue: {}", filteredUrls);
-                    return saveLinkInfo(urls);
+                .flatMap(links -> {
+                    List<String> urls = links.stream()
+                            .map(LinkInfo::getUrl)
+                            .toList();
+
+                    return databaseService.saveAllLinkInfo(links)
+                            .then(urlQueueService.addUrls(urls))
+                            .thenReturn(links);
+
                 });
     }
 
-    private Flux<LinkInfo> saveLinkInfo(List<LinkInfo> extractedUrls) {
-        log.info("Saving extracted links with keywords in DB: {}", extractedUrls.size());
-        return Flux.fromIterable(extractedUrls)
-                .flatMap(databaseService::saveLinkInfo);
-    }
 
-    private void logUrls(List<String> urls) {
-        urls.forEach(url -> log.debug("Processing URL: {}", url));
-    }
-
-    public Mono<Boolean> filterNewUrls(String url) {
-        return deduplicator.hasUrl(url)
-                .flatMap(hasUrl -> {
-                    log.info("Has url [{}] - {}", url, hasUrl);
-                    if (hasUrl) {
-                        log.debug("URL: {} is duplicate, skip", url);
-                        return Mono.just(false);
-                    } else {
-                        log.debug("URL: {} is new. Added to the Deduplicator", url);
-//                        deduplicator.addUrlToDeduplication(url).subscribe();
-                        return Mono.just(true);
-                    }
-                });
-    }
-
-    public Optional<LinkInfo> extractLinkInfo(Element link) {
-        String url = link.attr("abs:href");
-        if (!isValidUrl(url)) {
-            return Optional.empty();
-        }
-
-        log.debug("Extracted link information from: {}", url);
-        String anchorText = link.text().trim();
-
-        String title = link.attr("title").trim();
-        String alt = link.attr("alt").trim();
-
-        String text = Stream.of(anchorText, title, alt)
-                .filter(s -> !s.isEmpty())
+    /**
+     * Extract text, title and alt from link.
+     */
+    public String getLinkText(Element link) {
+        log.debug("Getting link text from: {}", link.attr("abs:href"));
+        return Stream.of(
+                        link.text().trim(),
+                        link.attr("title").trim(),
+                        link.attr("alt").trim()
+                ).filter(s -> !s.isEmpty())
                 .collect(Collectors.joining(" "));
-
-        log.debug("Extracted link information: {}", text);
-
-        Set<String> keywords = keywordExtractor.extractKeywords(text);
-
-        log.debug("Extracted keywords: {}", keywords);
-        if (!keywords.isEmpty()) {
-            return Optional.of(new LinkInfo(url, keywords));
-        } else {
-            return Optional.empty();
-        }
     }
 
-    public boolean isValidUrl(String url) {
-        if (!url.startsWith("http")) {
+
+    private boolean isValidUrl(String url) {
+        try {
+            URI uri = new URI(url);
+            return uri.getScheme() != null
+                    && uri.getHost() != null
+                    && !uri.getPath().matches(".*\\.(jpg|png|gif|pdf|zip|rar|exe)$");
+        } catch (URISyntaxException e) {
+            log.debug("Invalid URL syntax: {}", url);
             return false;
         }
-        String[] invalidUrls = {".jpg", ".png", ".gif", ".pdf", ".zip", ".rar", ".exe"};
-        for (String ext : invalidUrls) {
-            if (url.toLowerCase().endsWith(ext)) {
-                log.debug("Invalid URL: {}. The URL must contain 'http/https' and shouldn't have a [{}] extension",
-                        url, invalidUrls);
-                return false;
-            }
-        }
-        return true;
     }
 
 }

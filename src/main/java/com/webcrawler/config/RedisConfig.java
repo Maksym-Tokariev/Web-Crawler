@@ -10,6 +10,10 @@ import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+/**
+  Configures Redis for reactive processes.
+ * */
+
 @Configuration
 @Data
 public class RedisConfig {

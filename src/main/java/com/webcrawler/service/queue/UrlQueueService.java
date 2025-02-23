@@ -1,65 +1,63 @@
 package com.webcrawler.service.queue;
 
-import lombok.Data;
+import com.webcrawler.config.RabbitConfig;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.rabbitmq.OutboundMessage;
+import reactor.rabbitmq.Receiver;
+import reactor.rabbitmq.Sender;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 
 /**
-   The queue to store a links.
+ * The queue to store a links.
  */
 
 @Slf4j
 @Service
-@Data
+@RequiredArgsConstructor
 public class UrlQueueService {
 
-    private int QUEUE_SIZE;
-    private final BlockingQueue<String> queue;
+    public final Sender sender;
+    public final Receiver receiver;
 
-    public UrlQueueService(@Value("${service.queue.size}") int queueSize) {
-        this.QUEUE_SIZE = queueSize;
-        this.queue = new LinkedBlockingQueue<>(QUEUE_SIZE);
+    /**
+     * Extract URLs from the queue
+     */
+    public Flux<String> consumeUrls() {
+        log.info("Starting to consume URLs from queue: {}", RabbitConfig.QUEUE_NAME);
+        return receiver.consumeAutoAck(RabbitConfig.QUEUE_NAME)
+                .doOnNext(i -> log.info("Consumed URLs from queue: {}", RabbitConfig.QUEUE_NAME))
+                .onBackpressureBuffer(1000)
+                .retryWhen(Retry.backoff(5, Duration.ofSeconds(1)))
+                .map(delivery -> new String(delivery.getBody()))
+                .onErrorResume(e -> {
+                    log.error("RabbitMQ error in consumer: {}", e.getMessage(), e);
+                    return Flux.empty();
+                })
+                .doOnCancel(receiver::close);
     }
 
-    public void addUrls(List<String> links) {
-        for (String link : links) {
-            try {
-                queue.put(link);
-                log.info("Queue content: {}", queue.size()
-//                        Arrays.toString(queue.toArray())
-                );
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("Interrupted while adding URL: {}", link, e);
-            }
-        }
+    /**
+     * Adds URL to the queue.
+     */
+    public Mono<Void> addUrl(String url) {
+        return sender.send(
+                Mono.just(new OutboundMessage(RabbitConfig.EXCHANGE, RabbitConfig.ROUTING_KEY, url.getBytes()))
+        ).then();
     }
 
-    public void addUrl(String link) {
-        try {
-            queue.put(link);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Interrupted while adding URL: {}", link, e);
-        }
-    }
-
-    public String takeUrl() {
-        try {
-            return queue.take();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Interrupted while taking URL", e);
-            return null;
-        }
-    }
-
-    public boolean isEmpty() {
-        return queue.isEmpty();
+    /**
+     * Adds list of URL's to the queue.
+     */
+    public Mono<Void> addUrls(List<String> urls) {
+        return Flux.fromIterable(urls)
+                .flatMap(this::addUrl)
+                .then();
     }
 }

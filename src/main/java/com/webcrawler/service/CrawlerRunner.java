@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+
 /**
   Entry point to crawler.
 */
@@ -20,11 +22,15 @@ public class CrawlerRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("--- Starting Crawler ---");
-//        String startUrl = "https://sudoku.org.ua/rus/";
         String startUrl = "https://www.pravda.com.ua/rus/news/";
 
-        urlQueueService.addUrl(startUrl);
-        crawlerService.startCrawling();
+        urlQueueService.addUrl(startUrl)
+                .delayElement(Duration.ofSeconds(1))
+                .then(crawlerService.startCrawling())
+                .subscribe(
+                        null,
+                        e -> log.error("Crawler failed: {}", e.getMessage(), e),
+                        () -> log.info("Crawler finished")
+                );
     }
 }

@@ -1,18 +1,19 @@
 package com.webcrawler.service.extractor;
 
-
 import com.webcrawler.utils.StopWordLoader;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Value;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
-import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 
+import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 public class KeywordExtractorTest {
@@ -20,86 +21,98 @@ public class KeywordExtractorTest {
     @Mock
     private StopWordLoader stopWordLoader;
 
+    @Mock
+    private Lemmatizer lemmatizer;
+
     @InjectMocks
-    private KeywordExtractor keywordExtractor;
+    KeywordExtractor keywordExtractor;
+
+    @Value("${file.path.stop.words.en}")
+    private String STOP_WORDS_EN;
+
+    @Value("${file.path.stop.words.ru}")
+    private String STOP_WORDS_RU;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-
-        keywordExtractor.setSTOP_WORDS_EN("src/main/resources/stop_words_en.txt");
-        keywordExtractor.setSTOP_WORDS_RU("src/main/resources/stop_words_ru.txt");
+        keywordExtractor = new KeywordExtractor(stopWordLoader, lemmatizer);
     }
 
     @Test
-    void testExtractKeyword() {
-        String testText = "This is a simple example. Простой пример.";
+    void extractKeywords_shouldFilterStopWordsAndLemmatize() {
+        when(stopWordLoader.loadStopWord("en_path")).thenReturn(Set.of("and", "the"));
+        when(stopWordLoader.loadStopWord("ru_path")).thenReturn(Set.of("и", "в"));
 
-        Set<String> stopWordsEn = new HashSet<>();
-        stopWordsEn.add("this");
-        stopWordsEn.add("is");
-        stopWordsEn.add("a");
+        when(lemmatizer.lemmatize("hello")).thenReturn(Mono.just("hello"));
+        when(lemmatizer.lemmatize("мир")).thenReturn(Mono.just("мир"));
+        when(lemmatizer.lemmatize("running")).thenReturn(Mono.just("run"));
 
-        Set<String> stopWordsRu = new HashSet<>();
-        stopWordsRu.add("простой");
+        String text = "AND the и В hello мир running";
 
-        when(stopWordLoader.loadStopWord(keywordExtractor.getSTOP_WORDS_EN())).thenReturn(stopWordsEn);
-        when(stopWordLoader.loadStopWord(keywordExtractor.getSTOP_WORDS_RU())).thenReturn(stopWordsRu);
+        Mono<Set<String>> result = keywordExtractor.extractKeywords(text);
 
-        Set<String> expectedKeywords = new HashSet<>();
-        expectedKeywords.add("simple");
-        expectedKeywords.add("example");
-        expectedKeywords.add("пример");
-
-        Set<String> keywords = keywordExtractor.extractKeywords(testText);
-
-        Assertions.assertNotNull(keywords);
-        Assertions.assertEquals(expectedKeywords, keywords);
+        StepVerifier.create(result)
+                .assertNext(keywords -> {
+                    assertThat(keywords).containsExactlyInAnyOrder("hello", "мир", "run");
+                })
+                .verifyComplete();
     }
 
     @Test
-    void testExtractKeywordsEmptyText() {
-        Set<String> keywords = keywordExtractor.extractKeywords("");
-        Assertions.assertNotNull(keywords);
-        Assertions.assertTrue(keywords.isEmpty());
+    void extractKeywords_shouldFilterShortWords() {
+        when(stopWordLoader.loadStopWord(anyString())).thenReturn(Set.of());
+        when(lemmatizer.lemmatize(anyString())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        String text = "a an it я he us";
+        Mono<Set<String>> result = keywordExtractor.extractKeywords(text);
+
+        StepVerifier.create(result)
+                .assertNext(keywords -> assertThat(keywords).isEmpty())
+                .verifyComplete();
     }
 
     @Test
-    void testExtractKeywordsNullText() {
-        Set<String> keywords = keywordExtractor.extractKeywords(null);
-        Assertions.assertNotNull(keywords);
-        Assertions.assertTrue(keywords.isEmpty());
+    void extractKeywords_shouldSplitWordsCorrectly() {
+
+        when(stopWordLoader.loadStopWord(anyString())).thenReturn(Set.of());
+        when(lemmatizer.lemmatize(anyString())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        String text = "word1,word2-word3%word4";
+        Mono<Set<String>> result = keywordExtractor.extractKeywords(text);
+
+        StepVerifier.create(result)
+                .assertNext(keywords -> {
+                    assertThat(keywords).containsExactlyInAnyOrder("word1", "word2", "word3", "word4");
+                })
+                .verifyComplete();
     }
 
     @Test
-    void testStemWord() {
-        String[] enWords = {"running", "cars", "went", "flies", "children", "easily", "stronger"};
-        String[] enStems = {"run","car", "go", "fly", "child", "easily", "strong"};
+    void extractKeywords_shouldHandleLemmatizationToEmpty() {
+        when(stopWordLoader.loadStopWord(anyString())).thenReturn(Set.of());
+        when(lemmatizer.lemmatize("ghost")).thenReturn(Mono.empty());
+        when(lemmatizer.lemmatize("word")).thenReturn(Mono.just("word"));
 
-        for (int i = 0; i < enWords.length; i++) {
-            Optional<String> enStemWord = keywordExtractor.lemmatizeWord(enWords[i]);
+        String text = "ghost word";
+        Mono<Set<String>> result = keywordExtractor.extractKeywords(text);
 
-            Assertions.assertTrue(enStemWord.isPresent());
-            Assertions.assertEquals(enStems[i], enStemWord.get());
-        }
+        StepVerifier.create(result)
+                .assertNext(keywords -> assertThat(keywords).containsExactly("word"))
+                .verifyComplete();
     }
 
     @Test
-    public void testStemWordNonStemmable() {
-        String word = "example";
-        String expectedStem = "example";
+    void extractKeywords_shouldNotIncludeLemmatizedStopWords() {
+        when(stopWordLoader.loadStopWord("en_path")).thenReturn(Set.of("walk"));
+        when(stopWordLoader.loadStopWord("ru_path")).thenReturn(Set.of());
+        when(lemmatizer.lemmatize("running")).thenReturn(Mono.just("run"));
 
-        Optional<String> actualStem = keywordExtractor.lemmatizeWord(word);
+        String text = "running";
+        Mono<Set<String>> result = keywordExtractor.extractKeywords(text);
 
-        Assertions.assertTrue(actualStem.isPresent());
-        Assertions.assertEquals(expectedStem, actualStem.get());
-    }
-
-    @Test
-    public void testStemWordNull() {
-        String word = null;
-        Optional<String> actualStem = keywordExtractor.lemmatizeWord(word);
-
-        Assertions.assertTrue(actualStem.isEmpty());
+        StepVerifier.create(result)
+                .assertNext(keywords -> assertThat(keywords).containsExactly("run"))
+                .verifyComplete();
     }
 }

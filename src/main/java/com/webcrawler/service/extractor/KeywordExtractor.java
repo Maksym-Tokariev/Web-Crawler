@@ -1,16 +1,14 @@
 package com.webcrawler.service.extractor;
 
 import com.webcrawler.utils.StopWordLoader;
-import edu.stanford.nlp.ling.CoreAnnotations;
-import edu.stanford.nlp.ling.CoreLabel;
-import edu.stanford.nlp.pipeline.Annotation;
-import edu.stanford.nlp.pipeline.StanfordCoreNLP;
-import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.util.*;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -19,12 +17,12 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@Data
+@RequiredArgsConstructor
 public class KeywordExtractor {
 
     private final StopWordLoader stopWordLoader;
 
-    private StanfordCoreNLP stanfordCoreNLP;
+    private final Lemmatizer lemmatizer;
 
     @Value("${file.path.stop.words.en}")
     private String STOP_WORDS_EN;
@@ -32,54 +30,15 @@ public class KeywordExtractor {
     @Value("${file.path.stop.words.ru}")
     private String STOP_WORDS_RU;
 
-    public Set<String> extractKeywords(String text) {
-        if (text == null || text.isEmpty()) {
-            return Collections.emptySet();
-        }
-
-        log.info("Extracting keywords from text {}", text);
-
+    public Mono<Set<String>> extractKeywords(String text) {
         Set<String> stopEn = stopWordLoader.loadStopWord(STOP_WORDS_EN);
         Set<String> stopRu = stopWordLoader.loadStopWord(STOP_WORDS_RU);
 
-        String lowerText = text.toLowerCase();
-        String[] words = lowerText.split("[^\\p{L}\\p{Nd}]+");
-
-        return Arrays.stream(words)
+        return Flux.fromArray(text.toLowerCase().split("[^\\p{L}\\p{Nd}]+"))
                 .filter(word -> word.length() > 2)
                 .filter(word -> !stopEn.contains(word))
                 .filter(word -> !stopRu.contains(word))
-                .map(String::toLowerCase)
-                .map(this::lemmatizeWord)
-                .filter(Optional::isPresent)
-                .flatMap(Optional::stream)
+                .flatMap(lemmatizer::lemmatize)
                 .collect(Collectors.toSet());
-    }
-
-    public Optional<String> lemmatizeWord(String word) {
-        log.debug("Lemmatize word {}", word);
-
-        if (word == null || word.isEmpty()) {
-            return Optional.empty();
-        }
-
-        Properties prop = new Properties();
-        prop.setProperty("annotators", "tokenize,ssplit,pos,lemma");
-        stanfordCoreNLP = new StanfordCoreNLP(prop);
-
-        Annotation document = new Annotation(word);
-        stanfordCoreNLP.annotate(document);
-
-        List<CoreLabel> tokens = document.get(CoreAnnotations.TokensAnnotation.class);
-        for (CoreLabel token : tokens) {
-            String posTag = token.get(CoreAnnotations.PartOfSpeechAnnotation.class);
-            String lemma = token.get(CoreAnnotations.LemmaAnnotation.class);
-
-            log.trace("Token: {}, POS Tag: {}, Lemma: {}", token.originalText(), posTag, lemma);
-            if (lemma != null && !lemma.equals("O")) {
-                return Optional.of(lemma);
-            }
-        }
-        return Optional.empty();
     }
 }

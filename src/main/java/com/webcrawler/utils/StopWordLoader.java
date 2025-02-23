@@ -1,6 +1,5 @@
 package com.webcrawler.utils;
 
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -9,6 +8,11 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+
+/**
+ * Service for loading stop worlds from the file.
+ * Handles reading and loading stop words from the defined file path.
+ */
 
 @Slf4j
 @Service
